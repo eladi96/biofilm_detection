@@ -13,17 +13,15 @@ def hsv_features(image):
 
     # Equalize the saturation channel
     eq_S = cv2.equalizeHist(S)
+    eq_image = cv2.cvtColor(cv2.merge([H, eq_S, V]), cv2.COLOR_HSV2BGR)
 
-    # Calculate the probability density function histogram for H and S channels
-    H_hist = np.histogram(H, bins=180, range=[0, 180], density=True)
-    S_hist = np.histogram(eq_S, bins=256, range=[0, 256], density=True)
-
-    print(H_hist.mean())
+    cv2.imshow("eq", eq_image)
+    cv2.waitKey()
 
 
 if __name__ == '__main__':
 
-    path = os.getcwd() + "/training"
+    path = os.getcwd() + "/images"
 
     for file in os.listdir(path):
         image = cv2.imread(path + "/" + file)
