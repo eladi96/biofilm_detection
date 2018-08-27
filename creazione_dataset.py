@@ -2,11 +2,13 @@ import os
 import cv2
 from skimage import io
 
-for file in os.listdir(os.getcwd() + "/test"):
+for file in os.listdir(os.getcwd() + "/images"):
     print(file)
-    image = cv2.cvtColor(cv2.imread(os.getcwd() + "/test/" + file), cv2.COLOR_BGR2RGB)
-    width, height = image.shape[:2]
+    image = cv2.cvtColor(cv2.imread(os.getcwd() + "/images/" + file), cv2.COLOR_BGR2RGB)
+    height, width = image.shape[:2]
     step = 128
+    height = height - (height % step)
+    print(height)
     c = 0
     for y in range(0, height, step):
         for x in range(0, width, step):

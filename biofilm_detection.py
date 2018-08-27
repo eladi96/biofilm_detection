@@ -3,6 +3,9 @@ import os
 import mahotas as mt
 import numpy as np
 import dominant_color as dc
+import time
+import matplotlib.pyplot as plt
+from datetime import timedelta
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
@@ -117,15 +120,20 @@ if __name__ == '__main__':
 
     # Extract haralick features from both lists
     print("Extracting haralick features...")
+    start_time = time.monotonic()
     haralick_training = haralick_features(training_path, training_filenames)
     haralick_test = haralick_features(test_path, test_filenames)
-    print("Completed!")
+    end_time = time.monotonic()
+    ex_time = timedelta(seconds=end_time - start_time)
+    print("Completed in " + str(ex_time) + " seconds.")
 
     # Extract color features from both lists
     print("Extracting color features...")
+    start_time = time.monotonic()
     hsv_training = hsv_features(training_path, training_filenames)
     hsv_test = hsv_features(test_path, test_filenames)
-    print("Completed!")
+    ex_time = timedelta(seconds=end_time - start_time)
+    print("Completed in " + str(ex_time) + " seconds.")
 
     # Concatenate the lists to create a single feature vector per file
     training_set = dict()
@@ -162,11 +170,9 @@ if __name__ == '__main__':
         else:
             prediction = 'Other'
 
-        image = cv2.imread(test_path + "/" + file)
+        image = cv2.cvtColor(cv2.imread(test_path + "/" + file), cv2.COLOR_BGR2RGB)
 
-        # show the label
-        cv2.putText(image, prediction, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 3)
-
-        # display the output image
-        cv2.imshow("Test_Image", image)
-        cv2.waitKey(0)
+        # display the output image with label
+        plt.imshow(image)
+        plt.title(prediction, fontdict={'family':'sans-serif', 'size':32})
+        plt.show()
