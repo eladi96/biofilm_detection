@@ -4,11 +4,11 @@ import dominant_color as dc
 import os
 import glob
 
-for filename in glob.glob(os.path.join(os.getcwd() + "/tiles/", '*.jpg')):
+for filename in glob.glob(os.path.join(os.getcwd() + "/training/", '*.jpg')):
     # construct the argument parser and parse the arguments
     args = dict()
     args['imagePath'] = filename
-    args['clusters'] = 2
+    args['clusters'] = 5
 
     # read in image of interest
     bgr_image = cv2.imread(args['imagePath'])
