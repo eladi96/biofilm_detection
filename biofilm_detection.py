@@ -7,8 +7,9 @@ import time
 import matplotlib.pyplot as plt
 from datetime import timedelta
 from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.preprocessing import RobustScaler
 from sklearn.cluster import KMeans
+from sklearn.externals import joblib
 from collections import Counter
 
 
@@ -127,6 +128,7 @@ def train():
     print("Extracting color features...")
     start_time = time.monotonic()
     hsv_training = hsv_features(training_path, training_filenames)
+    end_time = time.monotonic()
     ex_time = timedelta(seconds=end_time - start_time)
     print("Completed in " + str(ex_time) + " seconds.")
 
@@ -135,13 +137,19 @@ def train():
     for file in training_filenames:
         training_set[file] = np.concatenate((haralick_training[file], hsv_training[file]))
 
-    # Normalize the dataset with Standard Scaler
-    scaler = StandardScaler()
+    # Normalize the dataset with Robust Scaler and save the scaler on file
+    print("Scaling the training set...")
+    scaler = RobustScaler()
     scaler.fit(list(training_set.values()))
-
+    try:
+        os.remove('fit_scaler.pkl')
+    except OSError:
+        pass
+    joblib.dump(scaler, 'fit_scaler.pkl')
     scaled_training = scaler.transform(list(training_set.values()))
     for file, scaled in zip(training_filenames, scaled_training):
         training_set[file] = scaled
+    print("Scaling completed. Scaler saved on " + os.path.join(os.getcwd(), "fit_scaler.pkl"))
 
     # Train the classifier
     print("Training the classifier...")
@@ -149,7 +157,13 @@ def train():
     if_clf.fit(list(training_set.values()))
     print("Classifier is ready!")
 
-    # TODO save scaler and clf to file
+    # Save the classifier to file
+    try:
+        os.remove('trained_clf.pkl')
+    except OSError:
+        pass
+    joblib.dump(if_clf, 'trained_clf.pkl')
+    print("Classifier saved on " + os.path.join(os.getcwd(), "trained_clf.pkl"))
 
 
 def preditc():
@@ -171,6 +185,7 @@ def preditc():
     print("Extracting color features...")
     start_time = time.monotonic()
     hsv_test = hsv_features(test_path, test_filenames)
+    end_time = time.monotonic()
     ex_time = timedelta(seconds=end_time - start_time)
     print("Completed in " + str(ex_time) + " seconds.")
 
@@ -179,21 +194,15 @@ def preditc():
     for file in test_filenames:
         test_set[file] = np.concatenate((haralick_test[file], hsv_test[file]))
 
-    # Normalize the dataset with Standard Scaler
-    # TODO open scaler from file
-    ss = StandardScaler()
-    ss.fit(list(training_set.values()))
-
-    scaled_test = ss.transform(list(test_set.values()))
+    # Load the scaler and normalize the dataset
+    scaler = joblib.load('fit_scaler.pkl')
+    scaled_test = scaler.transform(list(test_set.values()))
     for file, scaled in zip(test_set.keys(), scaled_test):
         test_set[file] = scaled
 
-    # Train the classifier
-    # TODO open clf from file
-    print("Training the classifier...")
-    if_clf = IsolationForest()
-    if_clf.fit(list(training_set.values()))
-    print("Classifier is ready!")
+    # Load the classifier
+    print("Loading classifier from file...")
+    if_clf = joblib.load('trained_clf.pkl')
 
     # Begin prediction
     print("Labeling started.")
@@ -213,70 +222,5 @@ def preditc():
 
 
 if __name__ == '__main__':
-
-    # Definition of paths
-    training_path = os.getcwd() + "/training"
-    test_path = os.getcwd() + "/test"
-
-    # Create the list of the training and test files
-    training_filenames = os.listdir(training_path)
-    test_filenames = os.listdir(test_path)
-
-    # Extract haralick features from both lists
-    print("Extracting haralick features...")
-    start_time = time.monotonic()
-    haralick_training = haralick_features(training_path, training_filenames)
-    haralick_test = haralick_features(test_path, test_filenames)
-    end_time = time.monotonic()
-    ex_time = timedelta(seconds=end_time - start_time)
-    print("Completed in " + str(ex_time) + " seconds.")
-
-    # Extract color features from both lists
-    print("Extracting color features...")
-    start_time = time.monotonic()
-    hsv_training = hsv_features(training_path, training_filenames)
-    hsv_test = hsv_features(test_path, test_filenames)
-    ex_time = timedelta(seconds=end_time - start_time)
-    print("Completed in " + str(ex_time) + " seconds.")
-
-    # Concatenate the lists to create a single feature vector per file
-    training_set = dict()
-    test_set = dict()
-    for file in training_filenames:
-        training_set[file] = np.concatenate((haralick_training[file], hsv_training[file]))
-    for file in test_filenames:
-        test_set[file] = np.concatenate((haralick_test[file], hsv_test[file]))
-
-    # Normalize the dataset with Standard Scaler
-    ss = StandardScaler()
-    ss.fit(list(training_set.values()))
-
-    scaled_training = ss.transform(list(training_set.values()))
-    for file, scaled in zip(training_filenames, scaled_training):
-        training_set[file] = scaled
-
-    scaled_test = ss.transform(list(test_set.values()))
-    for file, scaled in zip(test_set.keys(), scaled_test):
-        test_set[file] = scaled
-
-    # Train the classifier
-    print("Training the classifier...")
-    if_clf = IsolationForest()
-    if_clf.fit(list(training_set.values()))
-    print("Classifier is ready!")
-
-    # Begin prediction
-    print("Labeling started.")
-    for file in test_set.keys():
-        prediction = if_clf.predict(test_set[file].reshape(1, -1))
-        if prediction == 1:
-            prediction = 'Biofilm'
-        else:
-            prediction = 'Other'
-
-        image = cv2.cvtColor(cv2.imread(test_path + "/" + file), cv2.COLOR_BGR2RGB)
-
-        # display the output image with label
-        plt.imshow(image)
-        plt.title(prediction, fontdict={'size': 32})
-        plt.show()
+    train()
+    preditc()
