@@ -4,7 +4,6 @@ import mahotas as mt
 import numpy as np
 import dominant_color as dc
 import time
-import matplotlib.pyplot as plt
 from datetime import timedelta
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import RobustScaler
@@ -13,7 +12,7 @@ from sklearn.externals import joblib
 from collections import Counter
 
 
-def haralick_features(path, filenames):
+def haralick_features(src, filenames):
     """ Returns a dict containing 13 Haralick texture features for
     every image in the list of files given as input.
 
@@ -23,7 +22,7 @@ def haralick_features(path, filenames):
 
     Parameters
     ----------
-    path : str
+    src : str
         The path which contains the files.
     filenames : list
         The list of files to elaborate.
@@ -36,7 +35,7 @@ def haralick_features(path, filenames):
     features_list = dict()
 
     for file in filenames:
-        image = cv2.imread(path + "/" + file)
+        image = cv2.imread(src + "/" + file)
         grayscale_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         features = mt.features.haralick(grayscale_image)
         features = features.mean(axis=0)
@@ -80,13 +79,13 @@ def get_dominant_color(image, k=3):
     return list(dominant_color)
 
 
-def hsv_features(path, filenames, clusters=3):
+def hsv_features(src, filenames, clusters=3):
     """Returns a list containing the HSV values of the dominant color of every image
     given as input.
 
     Parameters
     ----------
-    path : str
+    src : str
         The path which contains the files.
     filenames : list
         The list of files to elaborate.
@@ -101,7 +100,7 @@ def hsv_features(path, filenames, clusters=3):
     dom_color_list = dict()
 
     for file in filenames:
-        bgr_image = cv2.imread(path + "/" + file)
+        bgr_image = cv2.imread(src + "/" + file)
         hsv_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2HSV)
         dom_color = dc.get_dominant_color(hsv_image, k=clusters)
         dom_color_list[file] = dom_color
@@ -109,14 +108,29 @@ def hsv_features(path, filenames, clusters=3):
     return dom_color_list
 
 
-def train():
-    # Definition of paths
-    training_path = os.getcwd() + "/training"
+def train(src=None):
+    """Trains the classifier and saves it on a file.
 
-    # Create the list of the training and test files
+    This method elaborates the training dataset to extract haralick's and color features
+    and uses those features to fit the scaler and train the classifier.
+
+    Both the scaler and the classifier are saved on a file.
+
+    Parameters
+    ----------
+    src : str, optional (default = "/training")
+        The path to the directory which contains the training dataset
+    """
+    # Definition of the path
+    if src is None:
+        training_path = os.getcwd() + "/training"
+    else:
+        training_path = src
+
+    # Create the list of the training files
     training_filenames = os.listdir(training_path)
 
-    # Extract haralick features from both lists
+    # Extract haralick features
     print("Extracting haralick features...")
     start_time = time.monotonic()
     haralick_training = haralick_features(training_path, training_filenames)
@@ -124,7 +138,7 @@ def train():
     ex_time = timedelta(seconds=end_time - start_time)
     print("Completed in " + str(ex_time) + " seconds.")
 
-    # Extract color features from both lists
+    # Extract color features
     print("Extracting color features...")
     start_time = time.monotonic()
     hsv_training = hsv_features(training_path, training_filenames)
@@ -166,14 +180,35 @@ def train():
     print("Classifier saved on " + os.path.join(os.getcwd(), "trained_clf.pkl"))
 
 
-def preditc():
-    # Definition of paths
-    test_path = os.getcwd() + "/test"
+def predict_set(src=None):
+    """Labels every image included in a given set.
 
-    # Create the list of the training and test files
+    This method elaborates a set of images to extract haralick's and color features
+    and uses those features to predict the presence or the absence of biofilm
+    in the images.
+
+    Both the scaler and the classifier are read from a file.
+
+    Parameters
+    ----------
+    src : str, optional (default = "/test")
+        The path to the directory which contains the images
+
+    Returns
+    -------
+    labeled_set : dict of (str : str)
+        The dictionary containing the labeled images.
+    """
+    # Definition of the path
+    if src is None:
+        test_path = os.getcwd() + "/test"
+    else:
+        test_path = src
+
+    # Create the list of the test files
     test_filenames = os.listdir(test_path)
 
-    # Extract haralick features from both lists
+    # Extract haralick features from the list
     print("Extracting haralick features...")
     start_time = time.monotonic()
     haralick_test = haralick_features(test_path, test_filenames)
@@ -181,7 +216,7 @@ def preditc():
     ex_time = timedelta(seconds=end_time - start_time)
     print("Completed in " + str(ex_time) + " seconds.")
 
-    # Extract color features from both lists
+    # Extract color features from the list
     print("Extracting color features...")
     start_time = time.monotonic()
     hsv_test = hsv_features(test_path, test_filenames)
@@ -205,22 +240,59 @@ def preditc():
     if_clf = joblib.load('trained_clf.pkl')
 
     # Begin prediction
+    labeled_set = dict()
     print("Labeling started.")
     for file in test_set.keys():
         prediction = if_clf.predict(test_set[file].reshape(1, -1))
         if prediction == 1:
-            prediction = 'Biofilm'
+            prediction = "BIOFILM"
         else:
-            prediction = 'Other'
+            prediction = "OTHER"
 
-        image = cv2.cvtColor(cv2.imread(test_path + "/" + file), cv2.COLOR_BGR2RGB)
+        labeled_set[file] = prediction
 
-        # display the output image with label
-        plt.imshow(image)
-        plt.title(prediction, fontdict={'size': 32})
-        plt.show()
+    return labeled_set
+
+
+def predict_one(image, scaler, clf):
+    """ Predicts the presence or the absence of biofilm in a single image.
+
+    Parameters
+    ----------
+    image : np.array
+        The image to elaborate.
+    scaler : a sklearn.preprocessing scaler
+        The scaler used to normalize the feature vector.
+    clf: the classifier.
+
+    Returns
+    -------
+    prediction : str
+        The predicted label for the image ["BIOFILM", "OTHER"]
+    """
+    grayscale_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    haralick = mt.features.haralick(grayscale_image)
+    haralick = haralick.mean(axis=0)
+
+    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    dom_color = dc.get_dominant_color(hsv_image)
+
+    feature_vector = np.concatenate((haralick, dom_color))
+
+    scaled_vector = scaler.transform(feature_vector.reshape(1, -1))
+
+    prediction = clf.predict(scaled_vector.reshape(1, -1))
+    if prediction == 1:
+        prediction = "BIOFILM"
+    else:
+        prediction = "OTHER"
+
+    return prediction
 
 
 if __name__ == '__main__':
-    train()
-    preditc()
+    test_path = os.getcwd() + "/test"
+    filenames = os.listdir(test_path)
+    for file in filenames:
+        image = cv2.imread(test_path + "/" + file)
+        print(file + " : " + predict_one(image))
