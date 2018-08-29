@@ -2,9 +2,9 @@ import cv2
 import os
 import mahotas as mt
 import numpy as np
-import dominant_color as dc
 import time
 from datetime import timedelta
+from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import RobustScaler
 from sklearn.cluster import KMeans
@@ -102,7 +102,7 @@ def hsv_features(src, filenames, clusters=3):
     for file in filenames:
         bgr_image = cv2.imread(src + "/" + file)
         hsv_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2HSV)
-        dom_color = dc.get_dominant_color(hsv_image, k=clusters)
+        dom_color = get_dominant_color(hsv_image, k=clusters)
         dom_color_list[file] = dom_color
 
     return dom_color_list
@@ -156,14 +156,28 @@ def train(src=None):
     scaler = RobustScaler()
     scaler.fit(list(training_set.values()))
     try:
-        os.remove('fit_scaler.pkl')
+        os.remove('scaler.pkl')
     except OSError:
         pass
-    joblib.dump(scaler, 'fit_scaler.pkl')
+    joblib.dump(scaler, 'scaler.pkl')
     scaled_training = scaler.transform(list(training_set.values()))
     for file, scaled in zip(training_filenames, scaled_training):
         training_set[file] = scaled
-    print("Scaling completed. Scaler saved on " + os.path.join(os.getcwd(), "fit_scaler.pkl"))
+    print("Scaling completed. Scaler saved on " + os.path.join(os.getcwd(), "scaler.pkl"))
+
+    # Transform the dataset using PCA
+    print("Started PCA transform...")
+    pca = PCA()
+    pca.fit(list(training_set.values()))
+    try:
+        os.remove('pca.pkl')
+    except:
+        pass
+    joblib.dump(pca, 'pca.pkl')
+    pca_training = pca.transform(list(training_set.values()))
+    for file, pca_value in zip(training_filenames, pca_training):
+        training_set[file] = pca_value
+    print("PCA transform complete. Fit PCA saved on " + os.path.join(os.getcwd(), "pca.pkl"))
 
     # Train the classifier
     print("Training the classifier...")
@@ -173,11 +187,11 @@ def train(src=None):
 
     # Save the classifier to file
     try:
-        os.remove('trained_clf.pkl')
+        os.remove('clf.pkl')
     except OSError:
         pass
-    joblib.dump(if_clf, 'trained_clf.pkl')
-    print("Classifier saved on " + os.path.join(os.getcwd(), "trained_clf.pkl"))
+    joblib.dump(if_clf, 'clf.pkl')
+    print("Classifier saved on " + os.path.join(os.getcwd(), "clf.pkl"))
 
 
 def predict_set(src=None):
@@ -186,6 +200,10 @@ def predict_set(src=None):
     This method elaborates a set of images to extract haralick's and color features
     and uses those features to predict the presence or the absence of biofilm
     in the images.
+
+    The feature vector is normalized using Robust Scaler.
+
+    The used classifier is Isolation Forest.
 
     Both the scaler and the classifier are read from a file.
 
@@ -230,14 +248,20 @@ def predict_set(src=None):
         test_set[file] = np.concatenate((haralick_test[file], hsv_test[file]))
 
     # Load the scaler and normalize the dataset
-    scaler = joblib.load('fit_scaler.pkl')
+    scaler = joblib.load('scaler.pkl')
     scaled_test = scaler.transform(list(test_set.values()))
     for file, scaled in zip(test_set.keys(), scaled_test):
         test_set[file] = scaled
 
+    # Loaf the PCA and transform the dataset
+    pca = joblib.load('pca.pkl')
+    pca_test = pca.transform(list(test_set.values()))
+    for file, pca_value in zip(test_set.keys(), pca_test):
+        test_set[file] = pca_value
+
     # Load the classifier
     print("Loading classifier from file...")
-    if_clf = joblib.load('trained_clf.pkl')
+    if_clf = joblib.load('clf.pkl')
 
     # Begin prediction
     labeled_set = dict()
@@ -254,7 +278,7 @@ def predict_set(src=None):
     return labeled_set
 
 
-def predict_one(image, scaler, clf):
+def predict_one(image, scaler, clf, pca):
     """ Predicts the presence or the absence of biofilm in a single image.
 
     Parameters
@@ -275,13 +299,15 @@ def predict_one(image, scaler, clf):
     haralick = haralick.mean(axis=0)
 
     hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    dom_color = dc.get_dominant_color(hsv_image)
+    dom_color = get_dominant_color(hsv_image)
 
     feature_vector = np.concatenate((haralick, dom_color))
 
     scaled_vector = scaler.transform(feature_vector.reshape(1, -1))
 
-    prediction = clf.predict(scaled_vector.reshape(1, -1))
+    pca_vector = pca.transform(scaled_vector.reshape(1, -1))
+
+    prediction = clf.predict(pca_vector.reshape(1, -1))
     if prediction == 1:
         prediction = "BIOFILM"
     else:
@@ -291,8 +317,29 @@ def predict_one(image, scaler, clf):
 
 
 if __name__ == '__main__':
-    test_path = os.getcwd() + "/test"
-    filenames = os.listdir(test_path)
-    for file in filenames:
-        image = cv2.imread(test_path + "/" + file)
-        print(file + " : " + predict_one(image))
+
+    train()
+
+    correct = dict()
+    for file in os.listdir(os.getcwd() + "/test/BIOFILM"):
+        correct[file] = "BIOFILM"
+    for file in os.listdir(os.getcwd() + "/test/OTHER"):
+        correct[file] = "OTHER"
+
+    scaler = joblib.load('scaler.pkl')
+    clf = joblib.load('clf.pkl')
+    pca = joblib.load('pca.pkl')
+
+    labeled = dict()
+    for file in os.listdir(os.getcwd() + "/test/UNLABELED"):
+        image = cv2.imread(os.getcwd() + "/test/UNLABELED/" + file)
+        labeled[file] = predict_one(image, scaler, clf, pca)
+
+    result = dict()
+    for file in correct:
+        result[file] = [correct[file], labeled[file]]
+
+    for file in result:
+        print(file + " : " + str(result[file]))
+
+
