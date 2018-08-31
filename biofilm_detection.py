@@ -111,10 +111,12 @@ def hsv_features(src, filenames, clusters=3):
 def train(src=None):
     """Trains the classifier and saves it on a file.
 
-    This method elaborates the training dataset to extract haralick's and color features
-    and uses those features to fit the scaler and train the classifier.
+    This method elaborates the training dataset to extract haralick's and color features.
 
-    Both the scaler and the classifier are saved on a file.
+    The dataset is first normalized using Robust Scaler, then processed
+    with PCA and finally used to train the classifier.
+
+    The scaler, the PCA object and the classifier are saved on a file.
 
     Parameters
     ----------
@@ -155,10 +157,6 @@ def train(src=None):
     print("Scaling the training set...")
     scaler = RobustScaler()
     scaler.fit(list(training_set.values()))
-    try:
-        os.remove('scaler.pkl')
-    except OSError:
-        pass
     joblib.dump(scaler, 'scaler.pkl')
     scaled_training = scaler.transform(list(training_set.values()))
     for file, scaled in zip(training_filenames, scaled_training):
@@ -166,13 +164,10 @@ def train(src=None):
     print("Scaling completed. Scaler saved on " + os.path.join(os.getcwd(), "scaler.pkl"))
 
     # Transform the dataset using PCA
-    print("Started PCA transform...")
+    print("Started PCA processing...")
     pca = PCA()
     pca.fit(list(training_set.values()))
-    try:
-        os.remove('pca.pkl')
-    except:
-        pass
+    print(os.path.join(os.getcwd(), "pca.pkl"))
     joblib.dump(pca, 'pca.pkl')
     pca_training = pca.transform(list(training_set.values()))
     for file, pca_value in zip(training_filenames, pca_training):
@@ -186,10 +181,6 @@ def train(src=None):
     print("Classifier is ready!")
 
     # Save the classifier to file
-    try:
-        os.remove('clf.pkl')
-    except OSError:
-        pass
     joblib.dump(if_clf, 'clf.pkl')
     print("Classifier saved on " + os.path.join(os.getcwd(), "clf.pkl"))
 
@@ -201,7 +192,8 @@ def predict_set(src=None):
     and uses those features to predict the presence or the absence of biofilm
     in the images.
 
-    The feature vector is normalized using Robust Scaler.
+    The feature vector is normalized using Robust Scaler, and then
+    transformed using PCA.
 
     The used classifier is Isolation Forest.
 
@@ -253,7 +245,7 @@ def predict_set(src=None):
     for file, scaled in zip(test_set.keys(), scaled_test):
         test_set[file] = scaled
 
-    # Loaf the PCA and transform the dataset
+    # Load the PCA and transform the dataset
     pca = joblib.load('pca.pkl')
     pca_test = pca.transform(list(test_set.values()))
     for file, pca_value in zip(test_set.keys(), pca_test):
@@ -278,7 +270,7 @@ def predict_set(src=None):
     return labeled_set
 
 
-def predict_one(image, scaler, clf, pca):
+def predict_one(image, scaler, pca, clf):
     """ Predicts the presence or the absence of biofilm in a single image.
 
     Parameters
@@ -287,6 +279,8 @@ def predict_one(image, scaler, clf, pca):
         The image to elaborate.
     scaler : a sklearn.preprocessing scaler
         The scaler used to normalize the feature vector.
+    pca : a sklearn.decomposition.PCA object
+        The trained PCA used to compute the orthogonal transformation over the dataset
     clf: the classifier.
 
     Returns
@@ -333,7 +327,7 @@ if __name__ == '__main__':
     labeled = dict()
     for file in os.listdir(os.getcwd() + "/test/UNLABELED"):
         image = cv2.imread(os.getcwd() + "/test/UNLABELED/" + file)
-        labeled[file] = predict_one(image, scaler, clf, pca)
+        labeled[file] = predict_one(image, scaler, pca, clf)
 
     result = dict()
     for file in correct:
@@ -341,5 +335,3 @@ if __name__ == '__main__':
 
     for file in result:
         print(file + " : " + str(result[file]))
-
-
